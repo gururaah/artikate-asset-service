@@ -1,35 +1,48 @@
-from celery import Celery
-from datetime import date, datetime
+from datetime import datetime, timezone
 from app.database import SessionLocal
 from app.models import CheckOut, OverdueNotice
-from sqlalchemy.exc import IntegrityError
 
-celery_app = Celery("tasks", broker="redis://localhost:6379/0")
-
-@celery_app.task
-def flag_overdue_checkouts():
-    db = SessionLocal()
+def flag_overdue_checkouts(db_session=None):
+    """
+    Finds every open, overdue check-out and creates an OverdueNotice dated today.
+    Safe to run repeatedly (Idempotent).
+    """
+    db = db_session if db_session else SessionLocal()
+    close_db = db_session is None
+    
     try:
-        today = date.today()
-        now = datetime.utcnow()
-        
-        # Find all open checkouts past their due date
-        overdue_items = db.query(CheckOut).filter(
+        today = datetime.utcnow().date()
+
+        # 1. Find all active checkouts where due_at < now and returned_at is None
+        overdue_checkouts = db.query(CheckOut).filter(
             CheckOut.returned_at.is_(None),
-            CheckOut.due_at < now
+            CheckOut.due_at < datetime.utcnow()
         ).all()
 
         created_count = 0
-        for c in overdue_items:
-            try:
-                
-                notice = OverdueNotice(checkout_id=c.id, notice_date=today)
+        for checkout in overdue_checkouts:
+            # 2. Check if a notice already exists for this checkout today (Idempotency check)
+            existing_notice = db.query(OverdueNotice).filter(
+                OverdueNotice.checkout_id == checkout.id,
+                OverdueNotice.notice_date == today
+            ).first()
+
+            if not existing_notice:
+                notice = OverdueNotice(
+                    checkout_id=checkout.id,
+                    notice_date=today
+                )
                 db.add(notice)
-                db.commit()
                 created_count += 1
-            except IntegrityError:
-                db.rollback() 
-                
-        return f"Successfully flagged {created_count} overdue checkouts."
+
+        db.commit()
+        print(f"✅ Flagged overdue checkouts: {created_count} new notices created.")
+        return created_count
+
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error in flag_overdue_checkouts: {e}")
+        return 0
     finally:
-        db.close()
+        if close_db:
+            db.close()
