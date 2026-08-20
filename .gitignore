@@ -1,7 +1,21 @@
+# Python cache
 __pycache__/
+*.py[cod]
+*$py.class
+
+# Testing cache
 .pytest_cache/
+
+# Virtual environments
 .venv/
 env/
+venv/
+ENV/
+
+# Database files
 *.db
 *.sqlite3
+
+# OS generated files
 .DS_Store
+Thumbs.db

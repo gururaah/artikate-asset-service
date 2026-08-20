@@ -36,12 +36,12 @@ def flag_overdue_checkouts(db_session=None):
                 created_count += 1
 
         db.commit()
-        print(f"✅ Flagged overdue checkouts: {created_count} new notices created.")
+        print(f"Flagged overdue checkouts: {created_count} new notices created.")
         return created_count
 
     except Exception as e:
         db.rollback()
-        print(f"❌ Error in flag_overdue_checkouts: {e}")
+        print(f"Error in flag_overdue_checkouts: {e}")
         return 0
     finally:
         if close_db:
